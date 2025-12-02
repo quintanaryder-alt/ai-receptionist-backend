@@ -121,7 +121,7 @@ try {
 }
 
 
-});
+
 
 // PORT
 const PORT = process.env.PORT || 10000;
