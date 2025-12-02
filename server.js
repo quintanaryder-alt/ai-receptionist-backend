@@ -40,9 +40,11 @@ app.post("/twilio/transcribe", upload.none(), async (req, res) => {
   try {
     const recordingUrl = req.body.RecordingUrl + ".wav";
 
+    // Download audio
     const audio = await fetch(recordingUrl);
     const buffer = Buffer.from(await audio.arrayBuffer());
 
+    // Transcribe with Whisper
     const transcript = await openai.audio.transcriptions.create({
       file: new File([buffer], "audio.wav", { type: "audio/wav" }),
       model: "gpt-4o-mini-transcribe"
@@ -50,6 +52,7 @@ app.post("/twilio/transcribe", upload.none(), async (req, res) => {
 
     const text = transcript.text;
 
+    // Generate reply
     const chat = await openai.chat.completions.create({
       model: "gpt-4.1-mini",
       messages: [
@@ -58,17 +61,14 @@ app.post("/twilio/transcribe", upload.none(), async (req, res) => {
           content: `
 You are an AI receptionist for a barbershop.
 
-Your job:
-1. Answer calls politely.
-2. Understand what the caller wants.
-3. If the caller wants to book, extract:
-   - name
-   - phone (use req.body.From if none given)
-   - service
-   - date
-   - time
+If caller wants to BOOK an appointment, extract:
+- name
+- phone number (use req.body.From if not provided)
+- service (haircut, fade, beard trim)
+- date
+- time
 
-Return ONLY this JSON when booking intent is detected:
+Return ONLY this EXACT JSON when booking is detected:
 
 {
   "intent": "booking",
@@ -79,26 +79,28 @@ Return ONLY this JSON when booking intent is detected:
   "time": "15:00"
 }
 
-No extra explanation. No extra text.
+NEVER add extra text with the JSON.  
+If caller is NOT booking, reply as a normal conversation.
 `
         },
         { role: "user", content: text }
       ]
     });
 
-    let reply = chat.choices[0].message.content;
+    const reply = chat.choices[0].message.content;
 
-    // Detect JSON
+    // Detect booking JSON
     let bookingData = null;
     try {
       bookingData = JSON.parse(reply);
     } catch (e) {}
 
-    // IF booking JSON found
-    if (bookingData && bookingData.intent === "booking") {
-      console.log("Booking request detected:", bookingData);
+    const twiml = new twilio.twiml.VoiceResponse();
 
-      // Send to Make.com
+    // Booking workflow
+    if (bookingData && bookingData.intent === "booking") {
+      console.log("Booking detected:", bookingData);
+
       try {
         await fetch(process.env.MAKE_WEBHOOK_URL, {
           method: "POST",
@@ -107,23 +109,22 @@ No extra explanation. No extra text.
         });
         console.log("Booking sent to Make.com");
       } catch (err) {
-        console.error("Error sending booking to Make.com:", err);
+        console.error("Error sending booking:", err);
       }
 
-      // Respond to caller
-      const twiml = new twilio.twiml.VoiceResponse();
-      twiml.say("Perfect. I'm sending your booking now.");
+      twiml.say("Perfect, I'm booking that for you now.");
+      twiml.hangup();
+
       res.type("text/xml");
       return res.send(twiml.toString());
     }
 
-    // If NOT booking → normal conversation response
-    const twiml = new twilio.twiml.VoiceResponse();
+    // Normal conversation response
     twiml.say(reply);
     twiml.redirect("/twilio/voice");
+
     res.type("text/xml");
     res.send(twiml.toString());
-
   } catch (err) {
     console.error(err);
     const twiml = new twilio.twiml.VoiceResponse();
