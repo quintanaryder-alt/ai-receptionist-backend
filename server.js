@@ -106,13 +106,18 @@ if (bookingData && bookingData.intent === "booking") {
   console.log("Booking request detected:", bookingData);
 
   const twiml = new twilio.twiml.VoiceResponse();
-  twiml.say("Perfect. I'm checking availability and booking that for you now.");
-
-  // TODO: send bookingData to Make.com (next step)
-  
-  res.type("text/xml");
-  return res.send(twiml.toString());
+  // Send booking data to Make.com webhook
+try {
+  await fetch(process.env.MAKE_WEBHOOK_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(bookingData)
+  });
+  console.log("Booking sent to Make.com");
+} catch (err) {
+  console.error("Error sending booking to Make.com:", err);
 }
+
 
 });
 
