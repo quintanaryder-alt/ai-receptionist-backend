@@ -1,3 +1,4 @@
+import fetch from "node-fetch";
 import express from "express";
 import multer from "multer";
 import { OpenAI } from "openai";
@@ -109,6 +110,7 @@ if (bookingData && bookingData.intent === "booking") {
   // Send booking data to Make.com webhook
 try {
   await fetch(process.env.MAKE_WEBHOOK_URL, {
+
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(bookingData)
