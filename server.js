@@ -58,30 +58,62 @@ app.post("/twilio/transcribe", upload.none(), async (req, res) => {
       messages: [
         {
           role: "system",
-          content:
-            "You are an AI receptionist. Be friendly, concise, and helpful."
+          content: `
+You are an AI receptionist for a barbershop.
+
+Your job:
+1. Answer calls politely and professionally.
+2. Understand what the caller wants.
+3. If the caller wants to BOOK an appointment, extract:
+   - name (if given)
+   - phone number (use req.body.From if caller says nothing)
+   - service (haircut, fade, beard trim, lineup, etc.)
+   - requested date
+   - requested time
+
+Return ONLY this JSON EXACTLY when booking intent is detected:
+
+{
+  "intent": "booking",
+  "name": "caller name",
+  "phone": "caller number",
+  "service": "haircut",
+  "date": "2025-01-04",
+  "time": "15:00"
+}
+
+RULES:
+- Never add extra text with the JSON.
+- Never apologize or explain JSON.
+- If caller is NOT trying to book, respond normally in conversational English.
+` 
+
         },
         { role: "user", content: text }
       ]
     });
 
-    const reply = chat.choices[0].message.content;
+    let reply = chat.choices[0].message.content;
 
-    // Respond to Twilio with voice
-    const twiml = new twilio.twiml.VoiceResponse();
-    twiml.say(reply);
-    twiml.redirect("/twilio/voice");
+// Try to detect booking JSON
+let bookingData = null;
+try {
+  bookingData = JSON.parse(reply);
+} catch (e) {}
 
-    res.type("text/xml");
-    res.send(twiml.toString());
-  } catch (err) {
-    console.error(err);
+// If JSON booking intent detected
+if (bookingData && bookingData.intent === "booking") {
+  console.log("Booking request detected:", bookingData);
 
-    const twiml = new twilio.twiml.VoiceResponse();
-    twiml.say("Sorry, I’m having trouble responding right now.");
-    res.type("text/xml");
-    res.send(twiml.toString());
-  }
+  const twiml = new twilio.twiml.VoiceResponse();
+  twiml.say("Perfect. I'm checking availability and booking that for you now.");
+
+  // TODO: send bookingData to Make.com (next step)
+  
+  res.type("text/xml");
+  return res.send(twiml.toString());
+}
+
 });
 
 // PORT
